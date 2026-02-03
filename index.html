@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tesla Coil Plasma Discharge Audio Visualizer</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./favicon.png">
+
+    <!-- Open Graph / Social Preview -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Ani’s Tesla Coil Sonic Visualizer">
+    <meta property="og:description" content="Aural-Dendrites is a generative system exploring how dendritic structures emerge from electric and sonic fields. Inspired by electrical discharges, neural growth, and plasma phenomena, the project treats sound and electricity not as signals, but as forces that shape form, motion, and decay over time.">
+    <meta property="og:url" content="https://anirudhvemula.github.io/musical-spirograph/">
+    <meta property="og:image" content="https://anirudhvemula.github.io/musical-spirograph/og-preview.png">
+    <meta property="og:image:width" content="840">
+    <meta property="og:image:height" content="750">
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Ani’s Tesla Coil Sonic Visualizer">
+    <meta name="twitter:description" content="Aural-Dendrites displays Tesla Coil Electric Discharges which are Audio Reactive (WebGL 2.0)">
+    <meta name="twitter:image" content="https://anirudhvemula.github.io/musical-spirograph/og-preview.png">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            font-family: 'Share Tech Mono',monospace;
+            color: #fff;
+            user-select: none;
+        }
+
+        canvas#glCanvas {
+            display: block;
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 28px 32px;
+        }
+
+        #header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        #title-block h1 {
+            font-family: 'Orbitron',sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #c8b8ff;
+            text-shadow: 0 0 12px rgba(180,140,255,0.6);
+        }
+
+        #title-block p {
+            font-size: 0.7rem;
+            color: rgba(200,180,255,0.45);
+            margin-top: 3px;
+            letter-spacing: 0.1em;
+        }
+
+        #freq-display {
+            text-align: right;
+            font-size: 0.65rem;
+            color: rgba(200,180,255,0.4);
+            letter-spacing: 0.08em;
+            line-height: 1.7;
+        }
+
+            #freq-display span {
+                color: rgba(220,200,255,0.75);
+            }
+
+        #controls {
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            background: rgba(12,8,24,0.72);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(180,140,255,0.18);
+            border-radius: 14px;
+            padding: 14px 20px;
+            width: fit-content;
+            margin: 0 auto;
+        }
+
+        .ctrl-btn {
+            background: rgba(180,140,255,0.12);
+            border: 1px solid rgba(180,140,255,0.3);
+            border-radius: 10px;
+            color: #c8b8ff;
+            font-family: 'Share Tech Mono',monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.1em;
+            padding: 9px 16px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+
+            .ctrl-btn:hover {
+                background: rgba(180,140,255,0.25);
+                box-shadow: 0 0 10px rgba(180,140,255,0.3);
+            }
+
+            .ctrl-btn.active {
+                background: rgba(180,140,255,0.3);
+                box-shadow: 0 0 12px rgba(180,140,255,0.45);
+            }
+
+        #file-input {
+            display: none;
+        }
+
+        #track-name {
+            font-size: 0.68rem;
+            color: rgba(200,180,255,0.55);
+            letter-spacing: 0.06em;
+            max-width: 180px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #intensity-ring {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 2px solid rgba(180,140,255,0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+            #intensity-ring::after {
+                content: '';
+                position: absolute;
+                inset: 3px;
+                border-radius: 50%;
+                background: radial-gradient(circle, rgba(180,140,255,0.6), transparent 70%);
+                transform: scale(var(--intensity, 0));
+                transition: transform 0.1s;
+            }
+
+        #waveCanvas {
+            width: 140px;
+            height: 34px;
+            border-radius: 8px;
+            background: rgba(180,140,255,0.06);
+            border: 1px solid rgba(180,140,255,0.15);
+        }
+    </style>
+</head>
+<body>
+<canvas id="glCanvas"></canvas>
+<div id="ui">
+  <div id="header">
+      <div id="title-block">
+          <h1>⚡ Aural-Dendrites ⚡</h1>
+          <p>Tesla Coil Plasma Discharge Audio Visualizer</p>
+          <p>By Anirudh Vemula, PE (2026)</p>
+      </div>
+    <div id="freq-display">
+      Bass: <span id="bass">0</span> &nbsp; Mid: <span id="mid">0</span> &nbsp; Hi: <span id="hi">0</span><br/>
+      FPS: <span id="fps">60</span>
+    </div>
+  </div>
+  <div id="controls">
+    <input type="file" id="file-input" accept="audio/*" />
+    <button class="ctrl-btn" id="btn-load">📂 Load Audio</button>
+    <button class="ctrl-btn" id="btn-play" disabled>▶ Play</button>
+    <div id="intensity-ring"></div>
+    <canvas id="waveCanvas" width="280" height="68"></canvas>
+    <span id="track-name">No track loaded</span>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// AUDIO ENGINE
+// ============================================================
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx, analyser, source, audioBuffer;
+let isPlaying = false, startedAt = 0, pausedAt = 0;
+const FFT_SIZE = 2048;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new AudioCtx();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = FFT_SIZE;
+  analyser.smoothingTimeConstant = 0.78;
+  analyser.connect(audioCtx.destination);
+}
+async function loadAudioFile(file) {
+  initAudio();
+  audioBuffer = await audioCtx.decodeAudioData(await file.arrayBuffer());
+  document.getElementById('track-name').textContent = file.name.replace(/\.[^.]+$/, '');
+  document.getElementById('btn-play').disabled = false;
+  stopAudio();
+}
+function playAudio() {
+  if (!audioBuffer) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  source.start(0, pausedAt);
+  startedAt = audioCtx.currentTime - pausedAt;
+  isPlaying = true;
+  source.onended = () => { if (isPlaying) stopAudio(); };
+  document.getElementById('btn-play').textContent = '⏸ Pause';
+  document.getElementById('btn-play').classList.add('active');
+}
+function pauseAudio() {
+  if (!source) return;
+  pausedAt = audioCtx.currentTime - startedAt;
+  source.stop(); isPlaying = false;
+  document.getElementById('btn-play').textContent = '▶ Play';
+  document.getElementById('btn-play').classList.remove('active');
+}
+function stopAudio() {
+  if (source) { try { source.stop(); } catch(e){} }
+  isPlaying = false; pausedAt = 0;
+  document.getElementById('btn-play').textContent = '▶ Play';
+  document.getElementById('btn-play').classList.remove('active');
+}
+
+document.getElementById('btn-load').addEventListener('click', () => document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', e => { if (e.target.files[0]) loadAudioFile(e.target.files[0]); });
+document.getElementById('btn-play').addEventListener('click', () => { isPlaying ? pauseAudio() : playAudio(); });
+
+// ============================================================
+// WEBGL 2.0
+// ============================================================
+const canvas = document.getElementById('glCanvas');
+const gl = canvas.getContext('webgl2');
+if (!gl) { document.body.innerHTML = '<h2 style="color:#f66;padding:40px">WebGL 2.0 not supported.</h2>'; }
+
+function resize() {
+  canvas.width  = window.innerWidth  * devicePixelRatio;
+  canvas.height = window.innerHeight * devicePixelRatio;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+function linkProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(p)); return null; }
+  return p;
+}
+
+// ============================================================
+// SHADERS
+// ============================================================
+const VERT_SRC = `#version 300 es
+layout(location=0) in vec2 a_pos;
+out vec2 v_uv;
+void main() { v_uv = a_pos*0.5+0.5; gl_Position = vec4(a_pos,0.0,1.0); }`;
+
+const FRAG_SRC = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 out_color;
+
+uniform float u_time;
+uniform float u_bass;
+uniform float u_mid;
+uniform float u_hi;
+uniform float u_energy;
+uniform float u_burst;
+uniform vec2  u_resolution;
+
+// ─── hash ───
+float hash1(float n) { return fract(sin(n)*43758.5453); }
+
+// ─── nucleus ───
+vec2 NUCLEUS = vec2(0.0, -0.20);
+
+// ─── per-ray length personality (0.6..1.4) ───
+float rayPersonality(float idx) { return 0.6 + hash1(idx*7.13+1.0)*0.8; }
+
+// ─── trace discharge ray: returns (minDist, progress) ───
+vec2 traceRay(vec2 p, float baseAngle, float timeSeed, float totalLen, int maxSeg) {
+  vec2  pos  = NUCLEUS;
+  float minD = 1e6, bestT = 0.0;
+  float segL = totalLen / float(maxSeg);
+
+  for (int i = 0; i < 24; i++) {
+    if (i >= maxSeg) break;
+    float fi   = float(i);
+    float t    = fi / float(maxSeg);
+    float jSeed = timeSeed + fi*7.31;
+    float jTime = floor(u_time*8.0 + timeSeed*0.7);
+    float j = (hash1(jSeed+jTime)-0.5)*0.52 + (hash1(jSeed+jTime+500.0)-0.5)*0.18;
+    j *= (0.55 + u_bass*0.75);
+
+    vec2 next = pos + vec2(cos(baseAngle+j), sin(baseAngle+j)) * segL;
+    vec2 ab   = next - pos;
+    float l2  = dot(ab,ab);
+    float tt  = l2 > 0.0 ? clamp(dot(p-pos,ab)/l2, 0.0, 1.0) : 0.0;
+    float d   = length(p - (pos + ab*tt));
+    if (d < minD) { minD = d; bestT = t + tt/float(maxSeg); }
+    pos = next;
+  }
+  return vec2(minD, bestT);
+}
+
+// ─── short corona arc (8 segments) ───
+float traceCorona(vec2 p, float angle, float timeSeed, float len) {
+  vec2  pos  = NUCLEUS;
+  float minD = 1e6;
+  float segL = len / 8.0;
+  for (int i = 0; i < 8; i++) {
+    float fi    = float(i);
+    float jTime = floor(u_time*14.0 + timeSeed);
+    float j     = (hash1(timeSeed + fi*5.7 + jTime)-0.5)*0.45;
+    vec2  next  = pos + vec2(cos(angle+j*0.6), sin(angle+j*0.6))*segL;
+    vec2  ab    = next-pos;
+    float l2    = dot(ab,ab);
+    float tt    = l2>0.0 ? clamp(dot(p-pos,ab)/l2,0.0,1.0) : 0.0;
+    minD = min(minD, length(p-(pos+ab*tt)));
+    pos = next;
+  }
+  return minD;
+}
+
+void main() {
+  vec2  uv     = v_uv - 0.5;
+  float aspect = u_resolution.x / u_resolution.y;
+  uv.x *= aspect;
+  float nr = length(uv - NUCLEUS);
+  vec3  col = vec3(0.0);
+
+  // ══════════════════ NUCLEUS ══════════════════
+  float coreSize = 0.020 + u_bass*0.016 + u_burst*0.012;
+  float core     = exp(-nr*nr / (coreSize*coreSize*0.5));
+  core *= 0.82 + 0.18*sin(u_time*24.0 + u_bass*45.0);
+  col += vec3(0.97,0.93,1.0) * core * 3.0;
+  col += vec3(0.50,0.32,0.80) * exp(-nr*nr/(0.0010+u_bass*0.0007+u_burst*0.0006)) * 1.1;
+
+  // ══════════════════ LAYER A: PERSISTENT RAYS (upward fan) ══════════════════
+  float persistCount = 5.0 + u_energy*5.0;   // 5 idle → 10 active
+
+  for (int ray = 0; ray < 10; ray++) {
+    float fr          = float(ray);
+    if (fr >= persistCount) break;
+
+    float personality = rayPersonality(fr);
+    float angleSeed   = hash1(fr*3.7+0.5);
+    float baseAngle   = mix(0.60, 2.54, angleSeed);  // 34°..145° upward fan
+    float tSeed       = fr*17.3 + floor(u_time*7.0 + fr*2.1);
+
+    // length: idle base + audio stretch, shaped by personality
+    float rayLen = (0.10 + 0.38*(u_energy*0.6 + u_bass*0.3 + u_burst*0.25)) * personality;
+
+    // flicker: slower in idle, faster when loud
+    float alive     = step(0.0, sin(u_time*(5.0+u_energy*8.0) + fr*5.7));
+    float burstBoost = u_burst * 1.5;
+
+    vec2  rd   = traceRay(uv, baseAngle, tSeed, rayLen, 20);
+    float dist = rd.x, prog = rd.y;
+
+    float baseThick = 0.0028 + u_bass*0.0012 + u_burst*0.0010;
+    float bright    = exp(-dist*dist / (baseThick*(1.0-prog*0.67)*baseThick*(1.0-prog*0.67)));
+
+    vec3 rayCol = mix(vec3(0.92,0.88,1.0), vec3(0.82,0.42,0.95), prog);
+    col += rayCol * min(bright*(alive+burstBoost), 3.0) * 2.4;
+
+    // ── 2 branches per ray ──
+    for (int b = 0; b < 2; b++) {
+      float fb    = float(b);
+      float brT   = 0.30 + fb*0.28;
+      float bLen  = (0.035 + u_mid*0.035 + u_hi*0.015) * personality;
+      float jOff  = (hash1(tSeed+fb*5.0+99.0)-0.5)*0.07;
+      vec2  bOrig = NUCLEUS + vec2(cos(baseAngle+jOff), sin(baseAngle+jOff))*(brT*rayLen);
+      float bAng  = baseAngle + (hash1(tSeed+fb*8.8+44.0)-0.5)*1.2;
+      float bAlive= max(step(0.0, sin(u_time*(16.0+fb*3.0+fr*0.9)+fr*7.0)), u_hi*0.6)
+                    * (alive + burstBoost*0.5);
+
+      float bd = traceCorona(uv, bAng, tSeed+fb*23.0+200.0, bLen);
+      col += vec3(0.75,0.55,1.0) * exp(-bd*bd/(0.0011*0.0011)) * min(bAlive,2.0) * 1.5;
+    }
+
+    // ── tip spark ──
+    {
+      float jOff  = (hash1(tSeed+77.0)-0.5)*0.09;
+      vec2  tip   = NUCLEUS + vec2(cos(baseAngle+jOff), sin(baseAngle+jOff))*rayLen;
+      float td    = length(uv-tip);
+      float sparkSz = 0.0028 + u_hi*0.004 + u_burst*0.002;
+      float spark   = exp(-td*td/(sparkSz*sparkSz))
+                    * (step(0.0, sin(u_time*32.0+fr*11.0)) + u_hi*0.5)
+                    * (alive + burstBoost);
+      col += vec3(1.0,0.94,1.0) * spark * 2.2;
+      col += vec3(0.55,0.35,0.90) * exp(-td*td/0.00025) * (alive+burstBoost*0.6) * 0.35;
+    }
+  }
+
+  // ══════════════════ LAYER B: BURST RAYS (bass transient eruption) ══════════════════
+  float burstCount = floor(u_burst*7.0 + 0.5);
+
+  for (int ray = 0; ray < 7; ray++) {
+    float fr = float(ray);
+    if (fr >= burstCount) break;
+
+    float personality = rayPersonality(fr+100.0);
+    float angleSeed   = hash1(fr*5.1+77.0);
+    float baseAngle   = mix(0.45, 2.70, angleSeed);  // wider fan for drama
+    float tSeed       = fr*31.7 + floor(u_time*3.5+fr*4.2)*13.0 + 500.0;
+    float rayLen      = (0.28 + u_bass*0.22 + 0.14) * personality;
+
+    vec2  rd   = traceRay(uv, baseAngle, tSeed, rayLen, 18);
+    float dist = rd.x, prog = rd.y;
+
+    float baseThick = 0.0032 + u_burst*0.0015;
+    float bright    = exp(-dist*dist / (baseThick*(1.0-prog*0.70)*baseThick*(1.0-prog*0.70)));
+
+    vec3 rayCol = mix(vec3(1.0,0.96,1.0), vec3(0.75,0.35,0.90), prog);
+    col += rayCol * bright * u_burst * 3.2;
+
+    // burst tip
+    {
+      float jOff = (hash1(tSeed+33.0)-0.5)*0.10;
+      vec2  tip  = NUCLEUS + vec2(cos(baseAngle+jOff), sin(baseAngle+jOff))*rayLen;
+      float td   = length(uv-tip);
+      col += vec3(1.0,0.95,1.0) * exp(-td*td/(0.0022*0.0022)) * u_burst * 2.8;
+    }
+  }
+
+  // ══════════════════ LAYER C: 360° CORONA RING ══════════════════
+  float coronaCount = 6.0 + u_energy*8.0;   // 6 idle → 14 active
+
+  for (int c = 0; c < 14; c++) {
+    float fc = float(c);
+    if (fc >= coronaCount) break;
+
+    float baseA  = (fc/14.0)*6.2832;
+    float wobble = sin(u_time*4.0+fc*2.1)*0.12*(0.4+u_energy*0.6);
+    float angle  = baseA + wobble;
+    float cLen   = 0.055 + u_mid*0.045 + u_burst*0.03;
+    float tSeed  = fc*9.1 + floor(u_time*12.0+fc*1.7);
+    float cAlive = max(step(0.0, sin(u_time*(10.0+fc*1.1)+fc*4.3)), u_energy*0.3);
+
+    float cd = traceCorona(uv, angle, tSeed, cLen);
+    vec3  cCol = mix(vec3(0.40,0.25,0.80), vec3(0.70,0.55,1.0), u_energy);
+    col += cCol * exp(-cd*cd/(0.00085*0.00085)) * cAlive * 1.1;
+
+    // corona tip dot
+    vec2  cTip = NUCLEUS + vec2(cos(angle),sin(angle))*cLen;
+    col += vec3(0.65,0.50,1.0) * exp(-length(uv-cTip)*length(uv-cTip)/0.00045) * cAlive * 0.6;
+  }
+
+  // ══════════════════ ATMOSPHERE ══════════════════
+  col += vec3(0.28,0.14,0.52) * exp(-nr*nr/(0.0035+u_bass*0.0025+u_burst*0.0018)) * (0.25+u_bass*0.35+u_burst*0.3);
+  col += vec3(0.22,0.12,0.40) * exp(-abs(uv.y-NUCLEUS.y)*abs(uv.y-NUCLEUS.y)/0.0006) * 0.10;
+
+  // ══════════════════ TONE MAP + VIGNETTE ══════════════════
+  col  = col / (1.0 + col*0.55);
+  float vr = length(v_uv-0.5)*1.55;
+  col *= 1.0 - clamp(vr*vr*0.38, 0.0, 0.62);
+
+  out_color = vec4(col, 1.0);
+}`;
+
+// ============================================================
+// COMPILE & SETUP
+// ============================================================
+const vs   = compileShader(VERT_SRC, gl.VERTEX_SHADER);
+const fs   = compileShader(FRAG_SRC, gl.FRAGMENT_SHADER);
+const prog = linkProgram(vs, fs);
+gl.useProgram(prog);
+
+const quadVerts = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+const uTime       = gl.getUniformLocation(prog, 'u_time');
+const uBass       = gl.getUniformLocation(prog, 'u_bass');
+const uMid        = gl.getUniformLocation(prog, 'u_mid');
+const uHi         = gl.getUniformLocation(prog, 'u_hi');
+const uEnergy     = gl.getUniformLocation(prog, 'u_energy');
+const uBurst      = gl.getUniformLocation(prog, 'u_burst');
+const uResolution = gl.getUniformLocation(prog, 'u_resolution');
+gl.uniform2f(uResolution, canvas.width, canvas.height);
+
+// ============================================================
+// AUDIO ANALYSIS + TRANSIENT DETECTOR + RENDER
+// ============================================================
+const freqData = new Uint8Array(FFT_SIZE / 2);
+const waveData = new Uint8Array(FFT_SIZE);
+const waveCanvas = document.getElementById('waveCanvas');
+const wCtx       = waveCanvas.getContext('2d');
+
+let sBass=0, sMid=0, sHi=0, sEnergy=0;
+let prevBass=0, burstVal=0;
+let lastTime = performance.now(), fps=60;
+
+function getAudioData() {
+  if (!analyser) return;
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(waveData);
+
+  const bassEnd = Math.floor(freqData.length*0.08);
+  const midEnd  = Math.floor(freqData.length*0.35);
+  let bSum=0, mSum=0, hSum=0;
+  for (let i=0; i<bassEnd; i++)              bSum += freqData[i];
+  for (let i=bassEnd; i<midEnd; i++)         mSum += freqData[i];
+  for (let i=midEnd; i<freqData.length; i++) hSum += freqData[i];
+
+  const bass   = bSum/(bassEnd*255);
+  const mid    = mSum/((midEnd-bassEnd)*255);
+  const hi     = hSum/((freqData.length-midEnd)*255);
+  const energy = bass*0.5 + mid*0.3 + hi*0.2;
+
+  const s = 0.20;
+  sBass   += (bass-sBass)*s;
+  sMid    += (mid-sMid)*s;
+  sHi     += (hi-sHi)*s;
+  sEnergy += (energy-sEnergy)*s;
+
+  // bass transient: fire burst on sharp upward jump
+  if (bass - prevBass > 0.12) burstVal = 1.0;
+  prevBass = bass;
+}
+
+function drawWaveform() {
+  const w=waveCanvas.width, h=waveCanvas.height;
+  wCtx.clearRect(0,0,w,h);
+  if (!analyser) return;
+  const grad = wCtx.createLinearGradient(0,0,w,0);
+  grad.addColorStop(0,'rgba(140,100,255,0.7)');
+  grad.addColorStop(0.5,'rgba(200,170,255,0.9)');
+  grad.addColorStop(1,'rgba(140,100,255,0.7)');
+  wCtx.strokeStyle=grad; wCtx.lineWidth=1.8; wCtx.beginPath();
+  const sliceW=w/waveData.length;
+  for (let i=0;i<waveData.length;i++) {
+    const x=i*sliceW, y=(waveData[i]/255.0)*h;
+    i===0 ? wCtx.moveTo(x,y) : wCtx.lineTo(x,y);
+  }
+  wCtx.stroke();
+}
+
+function updateUI() {
+  document.getElementById('bass').textContent  = (sBass*100).toFixed(0);
+  document.getElementById('mid').textContent   = (sMid*100).toFixed(0);
+  document.getElementById('hi').textContent    = (sHi*100).toFixed(0);
+  document.getElementById('fps').textContent   = fps;
+  document.getElementById('intensity-ring').style.setProperty('--intensity', sEnergy.toFixed(3));
+}
+
+function render(time) {
+  const dt = time - lastTime;
+  lastTime = time;
+  if (dt>0) fps = Math.round(1000/dt);
+
+  getAudioData();
+
+  // decay burst over ~150ms (linear)
+  burstVal = Math.max(burstVal - dt/150.0, 0.0);
+
+  drawWaveform();
+  updateUI();
+
+  gl.uniform1f(uTime,   time*0.001);
+  gl.uniform1f(uBass,   sBass);
+  gl.uniform1f(uMid,    sMid);
+  gl.uniform1f(uHi,     sHi);
+  gl.uniform1f(uEnergy, sEnergy);
+  gl.uniform1f(uBurst,  burstVal);
+  gl.uniform2f(uResolution, canvas.width, canvas.height);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
