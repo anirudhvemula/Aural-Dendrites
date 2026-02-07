@@ -253,32 +253,7 @@ vec3 traceBolt(vec2 p, vec2 startPos, float baseAngle, float timeSeed, float tot
     float microJ = (hash1(jSeed+jTime+200.0)-0.5)*0.15;
     j += microJ;
 
-    // pseudo-electric field (low frequency, stable)
-    vec2 field;
-    float flip = sign(sin(u_time * 0.5));
-    field.x = sin(pos.y*7.0 + u_time*0.6) * flip;
-
-    field.y = cos(pos.x*7.0 - u_time*0.6);
-
-    // strong upward electric lift (do NOT normalize yet)
-    field += vec2(0.0, 1.8);
-
-    // later normalization happens after blending
-
-
-
-    // forward direction
-    vec2 dir = normalize(vec2(cos(baseAngle), sin(baseAngle)));
-
-    // blend: dominant forward + field bending + jitter
-    vec2 finalDir = normalize(
-        dir * 0.75 +
-        field * 0.35 +
-        vec2(cos(baseAngle + j), sin(baseAngle + j)) * 0.25
-    );
-
-    vec2 next = pos + finalDir * segL;
-
+    vec2 next = pos + vec2(cos(baseAngle+j), sin(baseAngle+j)) * segL;
     vec2 ab   = next - pos;
     float l2  = dot(ab,ab);
     float tt  = l2 > 0.0 ? clamp(dot(p-pos,ab)/l2, 0.0, 1.0) : 0.0;
@@ -300,21 +275,12 @@ vec3 traceRecursiveBranches(vec2 p, vec2 origin, float baseAngle, float timeSeed
   vec3 trunk = traceBolt(p, origin, baseAngle, timeSeed, mainLen, 22);
   dist0 = trunk.x;
 
-  // ─── LEVEL 1: Secondary branches (spawn from leader path) ───
+  // ─── LEVEL 1: Secondary branches (spawn at 3 points along trunk) ───
   for (int b1 = 0; b1 < 3; b1++) {
-  float fb1 = float(b1);
-
-  float spawnT = 0.25 + fb1*0.25;
-
-  // base spawn along leader direction
-  vec2 spawnPos = origin
-    + vec2(cos(baseAngle), sin(baseAngle)) * (mainLen * spawnT);
-
-  // bias spawn forward so branches visually emerge from leader
-  vec2 leaderDir = normalize(vec2(cos(baseAngle), sin(baseAngle)));
-  spawnPos += leaderDir * (0.015 + u_energy * 0.02);
-
-
+    float fb1 = float(b1);
+    
+    float spawnT = 0.25 + fb1*0.25;
+    vec2 spawnPos = origin + vec2(cos(baseAngle), sin(baseAngle)) * (mainLen * spawnT);
     
     float b1Seed = timeSeed + fb1*31.7 + 100.0;
     float b1Dev  = (hash1(b1Seed)-0.5) * 1.57;
@@ -385,29 +351,19 @@ void main() {
   col += vec3(0.50,0.32,0.80) * exp(-nr*nr/(0.0010+u_bass*0.0007+u_burst*0.0006)) * 1.1;
 
   // ══════════════════ LAYER A: PERSISTENT BRANCHING RAYS ══════════════════
-  float persistCount = 3.0 + u_energy*4.0; // fewer total rays
-  // dominant leader index
-  int leaderIndex = int(mod(floor(u_time * 0.6), persistCount));
-
+  float persistCount = 5.0 + u_energy*5.0;   // 5 idle → 10 active
 
   for (int ray = 0; ray < 10; ray++) {
     float fr = float(ray);
-    bool isLeader = (ray == leaderIndex);
-
     if (fr >= persistCount) break;
 
     float personality = rayPersonality(fr);
     float angleSeed   = hash1(fr*3.7+0.5);
-    float baseAngle = (isLeader ? 1.5708 : mix(0.35, 2.80, angleSeed));
-
-
+    float baseAngle   = mix(0.60, 2.54, angleSeed);
     float tSeed       = fr*17.3 + floor(u_time*7.0 + fr*2.1);
 
     // Length: idle small, audio stretches dramatically
-    float rayLen = (isLeader ? 0.75 : 0.32)
-             * (0.6 + u_energy*0.8 + u_burst*0.4)
-             * personality;
-
+    float rayLen = (0.10 + 0.38*(u_energy*0.6 + u_bass*0.3 + u_burst*0.25)) * personality;
 
     // Flicker
     float alive     = step(0.0, sin(u_time*(5.0+u_energy*8.0) + fr*5.7));
@@ -417,31 +373,22 @@ void main() {
     vec3 distances = traceRecursiveBranches(uv, NUCLEUS, baseAngle, tSeed, rayLen, personality);
 
     // Apply thickness per level: trunk (1.0x), secondary (0.55x), tertiary (0.32x)
-    float baseThick = (isLeader ? 0.0042 : 0.0020)
-                + u_bass*0.0012
-                + u_burst*0.0010;
-
+    float baseThick = 0.0026 + u_bass*0.0010 + u_burst*0.0008;
     
     float thick0 = baseThick * 1.0;   // trunk
     float thick1 = baseThick * 0.55;  // secondary
     float thick2 = baseThick * 0.32;  // tertiary
     
-    float bright0 = exp(-pow(distances.x / thick0, 2.4));
-    float bright1 = exp(-pow(distances.y / thick1, 2.8));
-    float bright2 = exp(-pow(distances.z / thick2, 3.2));
-
+    float bright0 = exp(-distances.x*distances.x / (thick0*thick0));
+    float bright1 = exp(-distances.y*distances.y / (thick1*thick1));
+    float bright2 = exp(-distances.z*distances.z / (thick2*thick2));
     
     float totalBright = bright0 + bright1 + bright2;
 
     // Color based on closest distance (approximation)
     float minDist = min(distances.x, min(distances.y, distances.z));
     float colorT = clamp(minDist*25.0, 0.0, 1.0);
-    vec3 coreCol = vec3(1.0, 0.97, 1.0);        // hot core
-    vec3 neonCol = vec3(0.78, 0.45, 1.05);      // neon purple
-    vec3 rayCol  = mix(coreCol, neonCol, clamp(colorT + u_energy*0.35, 0.0, 1.0));
-
-    float desat = smoothstep(0.0, 0.0035, minDist);
-    rayCol = mix(vec3(1.0), rayCol, desat);
+    vec3 rayCol = mix(vec3(0.92,0.88,1.0), vec3(0.82,0.42,0.95), colorT);
     
     col += rayCol * min(totalBright*(alive+burstBoost), 3.5) * 2.6;
   }
@@ -506,11 +453,6 @@ void main() {
   col  = col / (1.0 + col*0.55);
   float vr = length(v_uv-0.5)*1.55;
   col *= 1.0 - clamp(vr*vr*0.38, 0.0, 0.62);
-
-  // temporal persistence (ionized air memory)
-  float persistence = 0.90 - u_energy*0.15;
-  col = mix(col, col * 1.15, persistence);
-
 
   out_color = vec4(col, 1.0);
 }`;
